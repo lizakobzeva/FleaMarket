@@ -1,0 +1,67 @@
+services:
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.auth
+    container_name: auth_service
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app/main.py:/app/main.py
+    environment:
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+    depends_on:
+      - postgres
+    networks:
+      - sirius_network
+
+  # PostgreSQL для Auth-сервиса
+  postgres:
+    image: postgres:15
+    container_name: auth_service_db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sirius_network
+
+
+  core-service:
+    build: ./core-service
+    container_name: core_service
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./core-service:/app
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8000
+    depends_on:
+      - auth-service
+    networks:
+      - sirius_network
+
+
+  notification-service:
+    build: ./notification-service
+    container_name: notification_service
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./notification-service:/app
+    networks:
+      - sirius_network
+
+networks:
+  sirius_network:
+    driver: bridge
+
+volumes:
+  postgres_data:

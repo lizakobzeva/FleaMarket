@@ -1,0 +1,286 @@
+openapi: 3.0.0
+
+info:
+  title: Auth Service API
+  description: |
+    Сервис регистрации и аутентификации пользователей онлайн‑барахолки.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000
+    description: Локальный сервер для разработки
+
+paths:
+  # 1. GET /users – список пользователей
+  /users:
+    get:
+      summary: Список пользователей
+      description: Возвращает массив всех зарегистрированных пользователей
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+
+    # 2. POST /users – регистрация нового пользователя
+    post:
+      summary: Регистрация пользователя
+      description: Создаёт новую учётную запись. Пароль передаётся в теле запроса и не возвращается в ответе.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: Пользователь успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Пользователь с таким email или именем уже существует
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "User with this email already exists"
+                  code:
+                    type: integer
+                    example: 409
+
+  # 3. GET /users/{userId} – получить пользователя по ID
+  /users/{userId}:
+    get:
+      summary: Получить пользователя по ID
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Уникальный идентификатор пользователя
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: Пользователь найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    # 4. DELETE /users/{userId} – удалить пользователя
+    delete:
+      summary: Удалить пользователя
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID пользователя для удаления
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Пользователь удалён
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # 5. POST /auth/login – аутентификация (получение JWT токена)
+  /auth/login:
+    post:
+      summary: Вход в систему
+      description: Проверяет учётные данные и возвращает JWT токен доступа
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "user@example.com"
+                password:
+                  type: string
+                  format: password
+                  example: "securePassword123"
+              required:
+                - email
+                - password
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIiwiZXhwIjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+                  token_type:
+                    type: string
+                    example: "bearer"
+        '401':
+          description: Неверные учётные данные
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Invalid email or password"
+                  code:
+                    type: integer
+                    example: 401
+
+  # 6. GET /auth/me – получить текущего пользователя (защищённый эндпоинт)
+  /auth/me:
+    get:
+      summary: Получить текущего пользователя
+      description: Возвращает информацию об авторизованном пользователе. Требует JWT токен.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Информация о пользователе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Неавторизованный запрос
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Could not validate credentials"
+                  code:
+                    type: integer
+                    example: 401
+
+components:
+  schemas:
+    User:
+      type: object
+      description: Полная информация о пользователе (без пароля)
+      properties:
+        id:
+          type: integer
+          description: Уникальный идентификатор пользователя
+          example: 42
+        username:
+          type: string
+          description: Имя пользователя (уникальное)
+          example: "john_doe"
+        email:
+          type: string
+          format: email
+          description: Адрес электронной почты (уникальный)
+          example: "john@example.com"
+        phone:
+          type: string
+          description: Номер телефона пользователя (опционально)
+          example: "+7 (999) 123-45-67"
+        rating:
+          type: number
+          format: float
+          description: Рейтинг пользователя (от 0 до 5)
+          minimum: 0
+          maximum: 5
+          example: 4.8
+        is_active:
+          type: boolean
+          description: Флаг активности учётной записи
+          default: true
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: Дата и время регистрации (ISO 8601)
+          example: "2025-03-01T12:00:00Z"
+      required:
+        - id
+        - username
+        - email
+        - created_at
+
+    UserCreate:
+      type: object
+      description: Данные для регистрации нового пользователя
+      properties:
+        username:
+          type: string
+          description: Имя пользователя (должно быть уникальным)
+          example: "john_doe"
+        email:
+          type: string
+          format: email
+          description: Электронная почта (уникальная)
+          example: "john@example.com"
+        password:
+          type: string
+          format: password
+          description: Пароль (минимум 8 символов)
+          example: "securePassword123"
+        phone:
+          type: string
+          description: Номер телефона (опционально)
+          example: "+7 (999) 123-45-67"
+      required:
+        - username
+        - email
+        - password
+
+  responses:
+    BadRequest:
+      description: Ошибка в запросе (некорректные данные)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Invalid request data"
+              code:
+                type: integer
+                example: 400
+
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "User not found"
+              code:
+                type: integer
+                example: 404
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT токен, полученный через POST /auth/login
