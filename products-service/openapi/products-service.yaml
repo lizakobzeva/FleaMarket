@@ -1,0 +1,261 @@
+openapi: 3.0.0
+info:
+  title: Product Service API
+  description: Сервис для CRUD операций с объявлениями
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000
+    description: Локальный сервер для разработки
+
+paths:
+  /products:
+    get:
+      summary: Получить список объявлений
+      description: Возвращает массив всех объявлений
+      parameters:
+        - name: search
+          in: query
+          required: false
+          description: поиск по названию объявления
+          schema:
+            type: string
+            example: 'macbook'
+      responses:
+        '200':
+          description: Успешное получение объявлений
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      summary: Создать объявление
+      description: Создаёт объявление в системе
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductCreate'
+      responses:
+        '201':
+          description: Успешное создание объявления
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+
+  /products/{productId}:
+    get:
+      summary: Получить объявление по ID
+      description: Возвращает определённое объявление по ID
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          description: ID объявления
+          schema:
+            type: string
+            format: uuid
+            example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: Успешное получение объявления
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    put:
+      summary: Изменить объявление
+      description: Изменяет определённое объявление по ID
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          description: ID объявления
+          schema:
+            type: string
+            format: uuid
+            example: 550e8400-e29b-41d4-a716-446655440000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductCreate'
+      responses:
+        '200':
+          description: Успешное изменение объявления
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    delete:
+      summary: Удалить объявление
+      description: Удаляет определённое объявление по ID
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          description: ID товара для удаления
+          schema:
+            type: string
+            format: uuid
+            example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '204':
+          description: Успешное удаление товара
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  schemas:
+    Product:
+      type: object
+      description: Полная модель объявления (включая ID)
+      properties:
+        id:
+          type: string
+          description: Уникальный идентификатор объявления
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        user_id:
+          type: string
+          description: Уникальный идентификатор пользователя
+          format: uuid
+          example: 119d2163-f16a-47af-9df7-418d3af1455a
+        title:
+          type: string
+          description: Название объявления
+          example: 'Macbook Air M1 16/256'
+        description:
+          type: string
+          description: Описание объявления
+          example: 'Супер крутой ноутбук для учёбы!!'
+        category:
+          type: string
+          description: Категория объявления
+          example: 'Ноутбук'
+        price:
+          type: number
+          description: Цена объявления в рублях
+          example: 75000.50
+        address:
+          type: string
+          description: Адрес объявления
+          example: 'ФТ Сириус, ул. Воскресенская, д. 12'
+        created_at:
+          type: string
+          format: date-time
+          description: Дата создания объявления
+          default: '2024-05-20T14:32:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          description: Дата последнего обновления объявления
+          default: '2024-06-29T17:54:00Z'
+
+    ProductCreate:
+      type: object
+      description: Модель для создания объявления
+      properties:
+        title:
+          type: string
+          description: Название объявления
+          example: 'Macbook Air M1 16/256'
+        description:
+          type: string
+          description: Описание объявления
+          example: 'Супер крутой ноутбук для учёбы!!'
+        category:
+          type: string
+          description: Категория объявления
+          example: 'Ноутбук'
+        price:
+          type: number
+          description: Цена объявления в рублях
+          example: 75000.50
+        address:
+          type: string
+          description: Адрес объявления
+          example: 'ФТ Сириус, ул. Воскресенская, д. 12'
+      required:
+        - title
+        - category
+        - price
+
+  responses:
+    Unauthorized:
+      description: Не вошёл в систему
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: 'you are not logged into your account'
+    Forbidden:
+      description: Недостаточно прав
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: 'you dont have permissions for this action'
+    UnprocessableEntity:
+      description: Ошибка в данных запроса
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: 'price not specified'
+    NotFound:
+      description: Объявление не найдено
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: 'product not found'
