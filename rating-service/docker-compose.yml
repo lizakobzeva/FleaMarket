@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # --- Auth Service ---
+  auth-service:
+    build: ./auth-service
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./auth-service:/app
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@auth-db:5432/authdb
+    depends_on:
+      - auth-db
+    networks:
+      - backend
+
+  auth-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=authdb
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    networks:
+      - backend
+
+  # --- Core Service ---
+  core-service:
+    build: ./core-service
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./core-service:/app
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@core-db:5432/coredb
+      - AUTH_SERVICE_URL=http://auth-service:8000
+    depends_on:
+      - core-db
+      - auth-service
+    networks:
+      - backend
+
+  core-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=coredb
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - core-db-data:/var/lib/postgresql/data
+    networks:
+      - backend
+
+  # --- Notification Service ---
+  notification-service:
+    build: ./notification-service
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./notification-service:/app
+    networks:
+      - backend
+
+  # --- Rating Service ---
+  rating-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8000"
+    volumes:
+      - .:/app
+    environment:
+      - DB_USER=postgres
+      - DB_PASSWORD=yourpassword
+      - DB_NAME=ratingdb
+      - DB_HOST=rating-db
+      - DB_PORT=5432
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8000
+    depends_on:
+      - rating-db
+      - notification-service
+    networks:
+      - backend
+
+  rating-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=ratingdb
+      - POSTGRES_PASSWORD=yourpassword
+    volumes:
+      - rating-db-data:/var/lib/postgresql/data
+    networks:
+      - backend
+
+# Определяем сети
+networks:
+  backend:
+    driver: bridge
+
+# Определяем volumes для сохранения данных БД
+volumes:
+  auth-db-data:
+  core-db-data:
+  rating-db-data:

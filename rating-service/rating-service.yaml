@@ -1,0 +1,249 @@
+openapi: 3.0.0
+
+info:
+  title: Rating Service API
+  description: |
+    Сервис для управления комментариями, оценками и рейтингами продавцов и покупателей.
+    Позволяет оставлять отзывы после сделки и рассчитывает общий рейтинг пользователя.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8003
+    description: Локальный сервер для разработки (Rating Service)
+
+# Основные эндпоинты
+paths:
+  # 1. GET - получить список всех отзывов по пользователю (основная БД)
+  /reviews:
+    get:
+      summary: Список отзывов пользователя
+      description: Возвращает список всех отзывов для конкретного пользователя (продавца или покупателя)
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          description: ID пользователя, для которого ищем отзывы (оставленные этому пользователю)
+          schema:
+            type: integer
+            example: 42
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+        '400':
+          description: Не указан user_id
+          $ref: '#/components/responses/BadRequest'
+
+  # 2. POST - создать новый отзыв (добавление в БД)
+  /reviews:
+    post:
+      summary: Создать отзыв
+      description: Добавляет новый отзыв о пользователе после завершения сделки
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewCreate'
+      responses:
+        '201':
+          description: Отзыв успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          description: Ошибка в данных запроса
+          $ref: '#/components/responses/BadRequest'
+
+  # 3. GET /reviews/{id} - получить один отзыв по ID (функция поиска в БД)
+  /reviews/{reviewId}:
+    get:
+      summary: Получить отзыв по ID
+      description: Возвращает конкретный отзыв по его идентификатору
+      parameters:
+        - name: reviewId
+          in: path
+          required: true
+          description: ID отзыва
+          schema:
+            type: integer
+            example: 101
+      responses:
+        '200':
+          description: Отзыв найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '404':
+          description: Отзыв не найден
+          $ref: '#/components/responses/NotFound'
+
+  # 4. DELETE /reviews/{id} - удалить отзыв (функция удаления из БД)
+  /reviews/{reviewId}:
+    delete:
+      summary: Удалить отзыв
+      description: Удаляет существующий отзыв (например, если он нарушает правила)
+      parameters:
+        - name: reviewId
+          in: path
+          required: true
+          description: ID отзыва для удаления
+          schema:
+            type: integer
+            example: 101
+      responses:
+        '200':
+          description: Отзыв удалён
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # 5. GET - получить средний рейтинг пользователя (функция агрегации данных из БД)
+  /ratings/users/{userId}:
+    get:
+      summary: Получить рейтинг пользователя
+      description: Возвращает среднюю оценку и общее количество отзывов для конкретного пользователя (вычисляется на лету из всех отзывов)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID пользователя (продавца или покупателя)
+          schema:
+            type: integer
+            example: 42
+      responses:
+        '200':
+          description: Рейтинг успешно рассчитан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRating'
+        '404':
+          description: Пользователь не найден или у него нет отзывов
+          $ref: '#/components/responses/NotFound'
+
+components:
+  # Модели данных
+  schemas:
+    Review:
+      type: object
+      description: Полная модель отзыва (хранится в БД)
+      properties:
+        id:
+          type: integer
+          description: Уникальный идентификатор отзыва
+          example: 101
+        author_id:
+          type: integer
+          description: ID автора отзыва (кто оставил)
+          example: 55
+        user_id:
+          type: integer
+          description: ID пользователя, которому оставлен отзыв
+          example: 42
+        rating:
+          type: integer
+          description: Оценка (от 1 до 5)
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          description: Текстовый комментарий
+          example: "Отличный продавец, товар пришел быстро и в целости!"
+        created_at:
+          type: string
+          format: date-time
+          description: Дата и время создания отзыва (ISO 8601)
+          example: "2026-02-20T14:30:00Z"
+      required:
+        - id
+        - author_id
+        - user_id
+        - rating
+        - created_at
+
+    ReviewCreate:
+      type: object
+      description: Данные для создания нового отзыва (ID и created_at генерируются автоматически)
+      properties:
+        author_id:
+          type: integer
+          description: ID автора отзыва
+          example: 55
+        user_id:
+          type: integer
+          description: ID пользователя, которому оставляем отзыв
+          example: 42
+        rating:
+          type: integer
+          description: Оценка (от 1 до 5)
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          description: Текстовый комментарий (необязательное поле)
+          example: "Отличный товар!"
+      required:
+        - author_id
+        - user_id
+        - rating
+
+    UserRating:
+      type: object
+      description: Объект с рейтингом пользователя (вычисляется на основе всех отзывов в БД)
+      properties:
+        user_id:
+          type: integer
+          description: ID пользователя
+          example: 42
+        average_rating:
+          type: number
+          format: float
+          description: Средняя арифметическая оценка (рейтинг) - вычисляется по всем отзывам где user_id = userId
+          example: 4.7
+        total_reviews:
+          type: integer
+          description: Общее количество отзывов - вычисляется по всем отзывам где user_id = userId
+          example: 15
+      required:
+        - user_id
+        - average_rating
+        - total_reviews
+
+  # Переиспользуемые ответы с ошибками
+  responses:
+    BadRequest:
+      description: Ошибка в запросе
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Некорректные данные"
+              code:
+                type: integer
+                example: 400
+
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Отзыв или пользователь не найден"
+              code:
+                type: integer
+                example: 404
