@@ -5,8 +5,10 @@ from sqlalchemy.orm import Session
 import httpx
 import asyncio
 from datetime import datetime
+import os
 from database import engine, get_db, Base
 from models import OrderModel
+from auth import get_current_user_id
 
 Base.metadata.create_all(bind=engine)
 
@@ -19,8 +21,8 @@ app = FastAPI(
 
 class OrderResponse(BaseModel):
     id: int
-    item_id: int
-    item_name: Optional[str]
+    product_id: str
+    product_title: Optional[str]
     buyer_id: int
     buyer_name: Optional[str]
     seller_id: int
@@ -33,10 +35,9 @@ class OrderResponse(BaseModel):
 
 
 class OrderCreate(BaseModel):
-    item_id: int
-    buyer_id: int
+    product_id: str
     seller_id: int
-    price: float
+    price: Optional[float] = None
 
 
 class OrderStatusUpdate(BaseModel):
@@ -47,7 +48,7 @@ class CancelOrderRequest(BaseModel):
     reason: Optional[str] = None
 
 
-AUTH_SERVICE_URL = "http://auth-service:8000"
+AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8000")
 NOTIFICATION_SERVICE_URL = "http://notification-service:8000"
 
 
@@ -133,11 +134,11 @@ def startup_event():
     db = next(get_db())
     if db.query(OrderModel).count() == 0:
         order1 = OrderModel(
-            item_id=1, item_name="Смартфон", buyer_id=55, buyer_name="Евгений Попов",
+            product_id="00000000-0000-0000-0000-000000000001", product_title="Смартфон", buyer_id=55, buyer_name="Евгений Попов",
             seller_id=12, seller_name="Петр Сидоров", price=30000.00, status="active"
         )
         order2 = OrderModel(
-            item_id=2, item_name="Ноутбук", buyer_id=56, buyer_name="Иван Иванов",
+            product_id="00000000-0000-0000-0000-000000000002", product_title="Ноутбук", buyer_id=56, buyer_name="Иван Иванов",
             seller_id=13, seller_name="Анна Петрова", price=75000.00, status="complet"
         )
         db.add_all([order1, order2])
@@ -180,36 +181,49 @@ def cancel_order(order_id: int, background_tasks: BackgroundTasks, cancel_reques
 
 
 @app.post("/orders", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
-async def create_order(order: OrderCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    buyer_name = f"Покупатель #{order.buyer_id}"
+async def create_order(
+    order: OrderCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    buyer_id: int = Depends(get_current_user_id),
+):
+    buyer_name = f"Покупатель #{buyer_id}"
     seller_name = f"Продавец #{order.seller_id}"
 
+    products_url = os.getenv("PRODUCTS_SERVICE_URL", "http://products-service:8000").rstrip("/")
     try:
         async with httpx.AsyncClient() as client:
-            resp_buyer = await client.post(f"{AUTH_SERVICE_URL}/verify/{order.buyer_id}", timeout=5.0)
-            if resp_buyer.status_code == 200:
-                buyer_data = resp_buyer.json()
-                buyer_name = buyer_data.get("username", buyer_name)
+            resp = await client.get(f"{products_url}/products/{order.product_id}", timeout=5.0)
     except Exception:
-        pass
+        raise HTTPException(status_code=503, detail="Products service unavailable")
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="Products service error")
 
-    try:
-        async with httpx.AsyncClient() as client:
-            resp_seller = await client.post(f"{AUTH_SERVICE_URL}/verify/{order.seller_id}", timeout=5.0)
-            if resp_seller.status_code == 200:
-                seller_data = resp_seller.json()
-                seller_name = seller_data.get("username", seller_name)
-    except Exception:
-        pass
+    product = resp.json()
+    product_title = product.get("title")
+    product_seller_id = product.get("seller_id")
+    if not isinstance(product_seller_id, int):
+        raise HTTPException(status_code=502, detail="Products payload missing seller_id")
+    if product_seller_id != order.seller_id:
+        raise HTTPException(status_code=400, detail="seller_id does not match product owner")
+
+    price = order.price
+    if price is None:
+        price_val = product.get("price")
+        if not isinstance(price_val, (int, float)):
+            raise HTTPException(status_code=502, detail="Products payload missing price")
+        price = float(price_val)
 
     db_order = OrderModel(
-        item_id=order.item_id,
-        item_name=f"Товар #{order.item_id}",
-        buyer_id=order.buyer_id,
+        product_id=order.product_id,
+        product_title=product_title,
+        buyer_id=buyer_id,
         buyer_name=buyer_name,
         seller_id=order.seller_id,
         seller_name=seller_name,
-        price=order.price,
+        price=price,
         status="active"
     )
     db.add(db_order)
@@ -221,9 +235,9 @@ async def create_order(order: OrderCreate, background_tasks: BackgroundTasks, db
             await client.post(
                 f"{NOTIFICATION_SERVICE_URL}/send",
                 json={
-                    "user_id": order.buyer_id,
+                    "user_id": buyer_id,
                     "order_id": db_order.id,
-                    "message": f"Ваш заказ #{db_order.id} на '{db_order.item_name}' создан."
+                    "message": f"Ваш заказ #{db_order.id} на '{db_order.product_title or db_order.product_id}' создан."
                 },
                 timeout=5.0
             )

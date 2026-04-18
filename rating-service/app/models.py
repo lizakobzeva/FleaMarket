@@ -7,6 +7,7 @@ class Review(Base):
     __tablename__ = "reviews"
 
     id = Column(Integer, primary_key=True, index=True)
+    order_id = Column(Integer, nullable=False, index=True)
     author_id = Column(Integer, nullable=False)
     user_id = Column(Integer, nullable=False)
     rating = Column(Integer, nullable=False)

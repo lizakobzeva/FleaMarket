@@ -9,6 +9,7 @@ import time
 import os
 
 from app import schemas, models
+from app.auth import get_current_user_id
 from app.database import SessionLocal, engine, get_db
 
 # URL Notification-сервиса берется из переменных окружения
@@ -153,20 +154,45 @@ def get_user_reviews(
 async def create_review(
     review: schemas.ReviewCreate,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    author_id: int = Depends(get_current_user_id),
 ):
     """
     Добавляет новый отзыв о пользователе после завершения сделки.
     """
     # Проверяем, что автор и получатель отзыва - разные пользователи
-    if review.author_id == review.user_id:
+    if author_id == review.user_id:
         raise HTTPException(
             status_code=400,
             detail={"error": "Нельзя оставить отзыв самому себе", "code": 400}
         )
 
+    orders_url = os.getenv("ORDERS_SERVICE_URL", "http://orders-service:8000").rstrip("/")
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"{orders_url}/orders/{review.order_id}", timeout=5.0)
+    except httpx.RequestError:
+        raise HTTPException(status_code=503, detail={"error": "Orders service unavailable", "code": 503})
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404, detail={"error": "Заказ не найден", "code": 404})
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail={"error": "Orders service error", "code": 502})
+
+    order = resp.json()
+    if order.get("status") != "complet":
+        raise HTTPException(status_code=400, detail={"error": "Заказ не завершен", "code": 400})
+
+    buyer_id = order.get("buyer_id")
+    seller_id = order.get("seller_id")
+    if author_id not in [buyer_id, seller_id]:
+        raise HTTPException(status_code=403, detail={"error": "Вы не участник сделки", "code": 403})
+    if review.user_id not in [buyer_id, seller_id] or review.user_id == author_id:
+        raise HTTPException(status_code=400, detail={"error": "user_id должен быть другой стороной сделки", "code": 400})
+
     # Преобразуем Pydantic модель в словарь и создаём SQLAlchemy объект
-    db_review = models.Review(**review.model_dump())
+    payload = review.model_dump()
+    payload["author_id"] = author_id
+    db_review = models.Review(**payload)
 
     # Добавляем в сессию и сохраняем
     db.add(db_review)
@@ -176,7 +202,7 @@ async def create_review(
     # Отправляем уведомление автору отзыва об успешном создании
     background_tasks.add_task(
         send_notification,
-        user_id=review.author_id,
+        user_id=author_id,
         message=f"Ваш отзыв для пользователя {review.user_id} успешно создан!",
         notification_type="review_created"
     )

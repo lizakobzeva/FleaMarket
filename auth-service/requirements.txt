@@ -5,6 +5,8 @@ asyncpg
 alembic
 python-dotenv
 pydantic
+email-validator
+python-multipart
 pydantic-settings
 PyJWT
 httpx

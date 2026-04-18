@@ -2,12 +2,8 @@ import os
 from typing import Annotated
 
 import httpx
-from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-
-load_dotenv()
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -15,14 +11,9 @@ bearer_scheme = HTTPBearer(auto_error=False)
 async def get_current_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)]
 ) -> int:
-    """
-    Единая auth-зависимость для сервиса: принимает Bearer JWT и получает user_id
-    через auth-service `/auth/me`.
-    """
     auth_url = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8000").rstrip("/")
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="you are not authenticated")
-
     headers = {"Authorization": f"Bearer {credentials.credentials}"}
 
     async with httpx.AsyncClient() as client:
@@ -44,3 +35,4 @@ async def get_current_user_id(
     if not isinstance(user_id, int):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="auth payload missing user id")
     return user_id
+

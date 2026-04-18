@@ -5,7 +5,7 @@ from typing import Optional
 
 # Базовая модель с общими полями
 class ReviewBase(BaseModel):
-    author_id: int
+    order_id: int
     user_id: int
     rating: int
     comment: Optional[str] = None
@@ -18,7 +18,7 @@ class ReviewCreate(ReviewBase):
 
 # Модель для обновления (все поля опциональны)
 class ReviewUpdate(BaseModel):
-    author_id: Optional[int] = None
+    order_id: Optional[int] = None
     user_id: Optional[int] = None
     rating: Optional[int] = None
     comment: Optional[str] = None
@@ -27,6 +27,7 @@ class ReviewUpdate(BaseModel):
 # Модель для ответа (со всеми полями)
 class ReviewResponse(ReviewBase):
     id: int
+    author_id: int
     created_at: datetime
 
     class Config:

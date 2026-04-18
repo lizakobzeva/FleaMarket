@@ -1,16 +1,16 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 
 class ChatBase(BaseModel):
-    item_id: int
+    product_id: UUID
     seller_id: int
     last_message: Optional[str] = None
     unread_count: int = 0
 
 class ChatCreate(BaseModel):
-    item_id: int
-    seller_id: int
+    product_id: UUID
     initial_message: str
 
 class ChatUpdate(BaseModel):

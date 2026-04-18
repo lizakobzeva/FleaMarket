@@ -15,8 +15,8 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from models import Base, User, Log, engine, AsyncSessionLocal, init_db, get_db
-from schemas import (
+from app.models import Base, User, Log, engine, AsyncSessionLocal, init_db, get_db
+from app.schemas import (
     UserCreate, UserUpdate, UserResponse, UserLogin, TokenResponse,
     LogCreate, LogResponse
 )
@@ -129,6 +129,14 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> Opti
     return user
 
 
+def build_token_response_for_user(user: User) -> TokenResponse:
+    access_token = create_access_token(
+        data={"sub": str(user.id), "email": user.email},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    return TokenResponse(access_token=access_token, token_type="bearer")
+
+
 async def create_log(db: AsyncSession, message: str, endpoint: Optional[str] = None,
                      user_id: Optional[int] = None) -> Log:
     db_log = Log(message=message, endpoint=endpoint, user_id=user_id)
@@ -178,8 +186,10 @@ async def write_log_to_db(message: str, endpoint: str = None, user_id: int = Non
 
 
 # 6. ИНИЦИАЛИЗАЦИЯ БД ПРИ ЗАПУСКЕ
-if not any('uvicorn' in arg for arg in sys.argv):
-    asyncio.get_event_loop().run_until_complete(init_db())
+@app.on_event("startup")
+async def startup_event() -> None:
+    # Для docker/dev гарантируем, что таблицы auth-service существуют.
+    await init_db()
 
 
 # 7. ЭНДПОИНТЫ
@@ -270,12 +280,41 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = create_access_token(
-        data={"sub": str(user.id), "email": user.email},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
+    return build_token_response_for_user(user)
 
-    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/authorization", response_model=TokenResponse)
+async def authorization(user_login: UserLogin, db: AsyncSession = Depends(get_db)):
+    """
+    Упрощенный endpoint авторизации для UI/Swagger:
+    принимает JSON `{email, password}` и возвращает bearer token.
+    """
+    user = await authenticate_user(db, user_login.email, user_login.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return build_token_response_for_user(user)
+
+
+@app.post("/registration", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+async def registration(user: UserCreate, db: AsyncSession = Depends(get_db)):
+    """
+    Упрощенный endpoint регистрации:
+    создает пользователя и сразу возвращает bearer token.
+    """
+    existing_user = await get_user_by_email(db, user.email)
+    if existing_user:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this email already exists")
+
+    existing_username = await get_user_by_username(db, user.username)
+    if existing_username:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this username already exists")
+
+    db_user = await create_user(db, user)
+    return build_token_response_for_user(db_user)
 
 
 @app.get("/auth/me", response_model=UserResponse)

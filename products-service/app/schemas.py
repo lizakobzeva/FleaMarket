@@ -22,6 +22,6 @@ class ProductCreate(ProductBase):
 # Модель для ответа (со всеми полями)
 class ProductResponse(ProductBase):
     id: UUID
-    # user_id: UUID
+    seller_id: int
     created_at: datetime
     updated_at: datetime

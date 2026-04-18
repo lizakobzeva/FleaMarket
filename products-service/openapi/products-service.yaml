@@ -153,11 +153,10 @@ components:
           description: Уникальный идентификатор объявления
           format: uuid
           example: 550e8400-e29b-41d4-a716-446655440000
-        user_id:
-          type: string
-          description: Уникальный идентификатор пользователя
-          format: uuid
-          example: 119d2163-f16a-47af-9df7-418d3af1455a
+        seller_id:
+          type: integer
+          description: ID владельца объявления (продавца)
+          example: 12
         title:
           type: string
           description: Название объявления

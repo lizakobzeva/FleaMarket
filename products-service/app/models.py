@@ -12,7 +12,7 @@ class Product(Base):
     __tablename__ = 'products'
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    # user_id: Mapped[UUID] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
+    seller_id: Mapped[int]
     title: Mapped[str]
     description: Mapped[Optional[str]]
     category: Mapped[str]

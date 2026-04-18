@@ -1,3 +1,4 @@
+import sqlalchemy as sa
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from app.database import Base
@@ -6,7 +7,7 @@ class Chat(Base):
     __tablename__ = "chats"
 
     id = Column(Integer, primary_key=True, index=True)
-    item_id = Column(Integer, nullable=False)
+    product_id = Column(sa.Uuid(), nullable=False, index=True)
     buyer_id = Column(Integer, nullable=False)
     seller_id = Column(Integer, nullable=False)
     last_message = Column(String, nullable=True)
