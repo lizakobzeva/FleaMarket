@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional
 
@@ -7,7 +7,7 @@ from typing import Optional
 class ReviewBase(BaseModel):
     order_id: int
     user_id: int
-    rating: int
+    rating: int = Field(..., ge=1, le=5, description="Оценка от 1 до 5 звёзд")
     comment: Optional[str] = None
 
 
@@ -20,7 +20,7 @@ class ReviewCreate(ReviewBase):
 class ReviewUpdate(BaseModel):
     order_id: Optional[int] = None
     user_id: Optional[int] = None
-    rating: Optional[int] = None
+    rating: Optional[int] = Field(None, ge=1, le=5)
     comment: Optional[str] = None
 
 

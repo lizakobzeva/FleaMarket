@@ -12,8 +12,6 @@ from app import schemas, models
 from app.auth import get_current_user_id
 from app.database import SessionLocal, engine, get_db
 
-# URL Notification-сервиса берется из переменных окружения
-# В Docker Compose это будет http://notification-service:8000
 NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://localhost:8003")
 
 # Создаём таблицы (только для разработки, в продакшене используем миграции!)

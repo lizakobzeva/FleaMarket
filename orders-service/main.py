@@ -1,4 +1,6 @@
-from fastapi import FastAPI, HTTPException, status, Depends, BackgroundTasks
+from uuid import UUID
+
+from fastapi import FastAPI, HTTPException, status, Depends, BackgroundTasks, Request
 from pydantic import BaseModel
 from typing import Optional, List
 from sqlalchemy.orm import Session
@@ -21,7 +23,7 @@ app = FastAPI(
 
 class OrderResponse(BaseModel):
     id: int
-    product_id: str
+    product_id: UUID
     product_title: Optional[str]
     buyer_id: int
     buyer_name: Optional[str]
@@ -35,7 +37,7 @@ class OrderResponse(BaseModel):
 
 
 class OrderCreate(BaseModel):
-    product_id: str
+    product_id: UUID
     seller_id: int
     price: Optional[float] = None
 
@@ -58,11 +60,8 @@ def write_log(message: str):
 
 
 async def fetch_user_info(user_id: int):
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{AUTH_SERVICE_URL}/users/{user_id}", timeout=5.0)
-        if resp.status_code == 200:
-            return resp.json()
-        return {"id": user_id, "username": f"Пользователь #{user_id}"}
+    """Заглушка: без публичного профиля в auth оставляем только id и нейтральное имя."""
+    return {"id": user_id, "username": f"Пользователь #{user_id}"}
 
 
 @app.get("/")
@@ -182,6 +181,7 @@ def cancel_order(order_id: int, background_tasks: BackgroundTasks, cancel_reques
 
 @app.post("/orders", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_order(
+    request: Request,
     order: OrderCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -191,15 +191,27 @@ async def create_order(
     seller_name = f"Продавец #{order.seller_id}"
 
     products_url = os.getenv("PRODUCTS_SERVICE_URL", "http://products-service:8000").rstrip("/")
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get(f"{products_url}/products/{order.product_id}", timeout=5.0)
+            resp = await client.get(
+                f"{products_url}/products/{order.product_id}",
+                headers={"Authorization": auth_header},
+                timeout=5.0,
+            )
     except Exception:
         raise HTTPException(status_code=503, detail="Products service unavailable")
     if resp.status_code == 404:
         raise HTTPException(status_code=404, detail="Product not found")
+    if resp.status_code == 401:
+        raise HTTPException(status_code=401, detail="Invalid or expired token for products service")
     if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail="Products service error")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Products service error (HTTP {resp.status_code})",
+        )
 
     product = resp.json()
     product_title = product.get("title")

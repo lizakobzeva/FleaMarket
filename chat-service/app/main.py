@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from typing import List
 import httpx
@@ -67,6 +67,7 @@ def read_chat(
 # POST /chats - создать чат
 @app.post("/chats", response_model=schemas.ChatResponse, status_code=201)
 def create_chat(
+    request: Request,
     chat: schemas.ChatCreate,
     db: Session = Depends(get_db),
     background_tasks: BackgroundTasks = None,
@@ -74,14 +75,26 @@ def create_chat(
 ):
     """Создать новый чат"""
     products_url = os.getenv("PRODUCTS_SERVICE_URL", "http://products-service:8000").rstrip("/")
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
     try:
-        resp = httpx.get(f"{products_url}/products/{chat.product_id}", timeout=5.0)
+        resp = httpx.get(
+            f"{products_url}/products/{chat.product_id}",
+            headers={"Authorization": auth_header},
+            timeout=5.0,
+        )
     except httpx.RequestError:
         raise HTTPException(status_code=503, detail="Products service unavailable")
     if resp.status_code == 404:
         raise HTTPException(status_code=404, detail="Product not found")
+    if resp.status_code == 401:
+        raise HTTPException(status_code=401, detail="Invalid or expired token for products service")
     if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail="Products service error")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Products service error (HTTP {resp.status_code})",
+        )
 
     product = resp.json()
     seller_id = product.get("seller_id")

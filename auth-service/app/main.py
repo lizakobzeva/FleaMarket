@@ -1,9 +1,7 @@
 # main.py
 import asyncio
 import os
-import sys
 import hashlib
-import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -11,14 +9,14 @@ import jwt
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models import Base, User, Log, engine, AsyncSessionLocal, init_db, get_db
 from app.schemas import (
-    UserCreate, UserUpdate, UserResponse, UserLogin, TokenResponse,
-    LogCreate, LogResponse
+    UserCreate, UserResponse, UserLogin, TokenResponse,
+    LogResponse
 )
 
 # 1. ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
@@ -35,7 +33,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+bearer_scheme = HTTPBearer()
 
 
 # 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -78,12 +76,6 @@ async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User
     return result.scalar_one_or_none()
 
 
-async def get_all_users(db: AsyncSession) -> List[User]:
-    stmt = select(User)
-    result = await db.execute(stmt)
-    return list(result.scalars().all())
-
-
 async def create_user(db: AsyncSession, user: UserCreate) -> User:
     db_user = User(
         username=user.username,
@@ -95,27 +87,6 @@ async def create_user(db: AsyncSession, user: UserCreate) -> User:
     await db.commit()
     await db.refresh(db_user)
     return db_user
-
-
-async def update_user(db: AsyncSession, user_id: int, user_update: UserUpdate) -> Optional[User]:
-    db_user = await get_user(db, user_id)
-    if not db_user:
-        return None
-    update_data = user_update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(db_user, field, value)
-    await db.commit()
-    await db.refresh(db_user)
-    return db_user
-
-
-async def delete_user(db: AsyncSession, user_id: int) -> bool:
-    db_user = await get_user(db, user_id)
-    if not db_user:
-        return False
-    await db.delete(db_user)
-    await db.commit()
-    return True
 
 
 async def authenticate_user(db: AsyncSession, email: str, password: str) -> Optional[User]:
@@ -159,7 +130,11 @@ async def get_logs_by_user(db: AsyncSession, user_id: int) -> List[Log]:
 
 
 # 5. ЗАВИСИМОСТИ FASTAPI
-async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    token = credentials.credentials
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -200,87 +175,6 @@ async def root():
         "docs": "/docs",
         "status": "running with PostgreSQL"
     }
-
-
-@app.get("/users", response_model=List[UserResponse])
-async def get_users(db: AsyncSession = Depends(get_db)):
-    """Получить список всех пользователей"""
-    return await get_all_users(db)
-
-
-@app.get("/users/{user_id}", response_model=UserResponse)
-async def get_user_endpoint(user_id: int, db: AsyncSession = Depends(get_db)):
-    """Получить пользователя по ID"""
-    user = await get_user(db, user_id)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return user
-
-
-@app.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register_user(
-    user: UserCreate,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db)
-):
-    """Зарегистрировать нового пользователя + фоновое логирование в БД"""
-    existing_user = await get_user_by_email(db, user.email)
-    if existing_user:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this email already exists")
-
-    existing_username = await get_user_by_username(db, user.username)
-    if existing_username:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this username already exists")
-
-    db_user = await create_user(db, user)
-
-    background_tasks.add_task(
-        write_log_to_db,
-        message=f"User created: id={db_user.id}, username={db_user.username}, email={db_user.email}",
-        endpoint="/users",
-        user_id=db_user.id
-    )
-
-    return db_user
-
-
-@app.put("/users/{user_id}", response_model=UserResponse)
-async def update_user_endpoint(
-    user_id: int,
-    user_update: UserUpdate,
-    db: AsyncSession = Depends(get_db)
-):
-    """Обновить данные пользователя"""
-    updated = await update_user(db, user_id, user_update)
-    if not updated:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return updated
-
-
-@app.delete("/users/{user_id}", status_code=status.HTTP_200_OK)
-async def delete_user_endpoint(user_id: int, db: AsyncSession = Depends(get_db)):
-    """Удалить пользователя"""
-    success = await delete_user(db, user_id)
-    if not success:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return {"message": "User deleted successfully"}
-
-
-@app.post("/auth/token", response_model=TokenResponse)
-async def login_for_access_token(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: AsyncSession = Depends(get_db)
-):
-    """Вход для Swagger UI (OAuth2 Password Flow)"""
-    user = await authenticate_user(db, form_data.username, form_data.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    return build_token_response_for_user(user)
 
 
 @app.post("/authorization", response_model=TokenResponse)
