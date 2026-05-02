@@ -129,4 +129,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy placeholder
-        run: echo "Deploy stub — замените на реальный деплой при необходимости."
+        run: echo "Deploy stub"
