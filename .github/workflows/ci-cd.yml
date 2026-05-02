@@ -92,7 +92,6 @@ jobs:
           - orders-service
           - products-service
           - rating-service
-          - mock-auth-service
 
     steps:
       - name: Checkout code
