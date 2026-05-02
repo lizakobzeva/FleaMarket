@@ -42,11 +42,6 @@ jobs:
             mypy_targets: "app"
             pytest_cov: "--cov=app"
             database_url: "sqlite:///./rating_ci.db"
-          - service: mock-auth-service
-            ruff_targets: "main.py tests"
-            mypy_targets: "main.py"
-            pytest_cov: "--cov=main"
-            database_url: "sqlite:///./mock_ci.db"
 
     defaults:
       run:

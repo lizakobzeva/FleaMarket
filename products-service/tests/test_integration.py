@@ -48,3 +48,57 @@ def test_delete_product(client):
 
     missing = client.get(f"/products/{product_id}")
     assert missing.status_code == 404
+
+
+def test_root():
+    from app.main import app
+    from fastapi.testclient import TestClient
+
+    with TestClient(app) as c:
+        r = c.get("/")
+    assert r.status_code == 200
+    assert r.json()["status"] == "running"
+
+
+def test_get_product_by_id(client):
+    created = client.post(
+        "/products/",
+        json={"title": "Tablet", "category": "electronics", "price": 9000.0, "description": "10 inch"},
+    )
+    product_id = created.json()["id"]
+    response = client.get(f"/products/{product_id}")
+    assert response.status_code == 200
+    assert response.json()["title"] == "Tablet"
+
+
+def test_get_product_not_found(client):
+    import uuid
+
+    response = client.get(f"/products/{uuid.uuid4()}")
+    assert response.status_code == 404
+
+
+def test_update_product_not_found(client):
+    import uuid
+
+    response = client.put(
+        f"/products/{uuid.uuid4()}",
+        json={"title": "X", "category": "y", "price": 1.0},
+    )
+    assert response.status_code == 404
+
+
+def test_delete_product_not_found(client):
+    import uuid
+
+    response = client.delete(f"/products/{uuid.uuid4()}")
+    assert response.status_code == 404
+
+
+def test_get_products_empty_after_deleting_all(client):
+    listed = client.get("/products/")
+    for item in listed.json():
+        client.delete(f"/products/{item['id']}")
+    response = client.get("/products/")
+    assert response.status_code == 200
+    assert response.json() == []
