@@ -1,0 +1,138 @@
+# CI/CD для монорепозитория: отдельная проверка и образ на каждый микросервис (matrix).
+# На pull request — только тесты, линтер и mypy (без публикации образа).
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    name: test (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: auth-service
+            ruff_targets: "app tests"
+            mypy_targets: "app"
+            pytest_cov: "--cov=app"
+            database_url: "sqlite+aiosqlite:///./auth_ci.db"
+          - service: chat-service
+            ruff_targets: "app tests"
+            mypy_targets: "app"
+            pytest_cov: "--cov=app"
+            database_url: "sqlite:///./chat_ci.db"
+          - service: orders-service
+            ruff_targets: "main.py auth.py database.py models.py tests"
+            mypy_targets: "main.py auth.py database.py models.py"
+            pytest_cov: "--cov=main --cov=auth --cov=database --cov=models"
+            database_url: "sqlite:///./orders_ci.db"
+          - service: products-service
+            ruff_targets: "app tests"
+            mypy_targets: "app"
+            pytest_cov: "--cov=app"
+            database_url: "sqlite+aiosqlite:///:memory:"
+          - service: rating-service
+            ruff_targets: "app tests"
+            mypy_targets: "app"
+            pytest_cov: "--cov=app"
+            database_url: "sqlite:///./rating_ci.db"
+          - service: mock-auth-service
+            ruff_targets: "main.py tests"
+            mypy_targets: "main.py"
+            pytest_cov: "--cov=main"
+            database_url: "sqlite:///./mock_ci.db"
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.service }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff mypy pytest pytest-cov
+
+      - name: Lint with ruff
+        run: ruff check ${{ matrix.ruff_targets }}
+
+      - name: Type check with mypy
+        run: mypy --config-file "${{ github.workspace }}/mypy.ini" ${{ matrix.mypy_targets }}
+
+      - name: Test with pytest
+        env:
+          DATABASE_URL: ${{ matrix.database_url }}
+          SECRET_KEY: ci-secret-key-for-testing-only
+        run: pytest ${{ matrix.pytest_cov }} --cov-fail-under=70 tests/
+
+  build-and-push:
+    name: build (${{ matrix.service }})
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - auth-service
+          - chat-service
+          - orders-service
+          - products-service
+          - rating-service
+          - mock-auth-service
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image name (lowercase)
+        id: image
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          REPO=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          echo "name=ghcr.io/${OWNER}/${REPO}-${SERVICE}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
+        working-directory: ${{ matrix.service }}
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+        run: |
+          docker build -t "${IMAGE}:${GITHUB_SHA}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${GITHUB_SHA}"
+          docker push "${IMAGE}:latest"
+
+  deploy:
+    name: Deploy (stub)
+    if: github.event_name == 'push'
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy placeholder
+        run: echo "Deploy stub — замените на реальный деплой при необходимости."

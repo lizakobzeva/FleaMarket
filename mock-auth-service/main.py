@@ -1,4 +1,3 @@
-from http.client import HTTPException
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI

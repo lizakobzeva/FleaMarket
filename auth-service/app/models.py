@@ -1,11 +1,9 @@
 import os
-from datetime import datetime
-from typing import Optional, List
 from urllib.parse import quote_plus
 
 from sqlalchemy import (
     Column, Integer, String, Boolean, Float, DateTime, ForeignKey, Text,
-    select, func
+    func
 )
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.ext.declarative import declarative_base

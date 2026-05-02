@@ -13,7 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models import Base, User, Log, engine, AsyncSessionLocal, init_db, get_db
+from app.models import User, Log, AsyncSessionLocal, init_db, get_db
 from app.schemas import (
     UserCreate, UserResponse, UserLogin, TokenResponse,
     LogResponse

@@ -2,7 +2,7 @@ from typing import Optional
 from uuid import UUID, uuid4
 
 from app.database import Base
-from sqlalchemy import Column, DateTime, ForeignKey
+from sqlalchemy import Column, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 

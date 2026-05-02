@@ -8,9 +8,9 @@ from pathlib import Path
 # Добавляем путь к папке с проектом
 sys.path.append(str(Path(__file__).parent.parent))
 
-# Импортируем модели
+# Импортируем модели (нужны для регистрации таблиц в Base.metadata)
 from database import Base
-from models import Chat, Message
+from models import Chat, Message  # noqa: F401
 
 config = context.config
 

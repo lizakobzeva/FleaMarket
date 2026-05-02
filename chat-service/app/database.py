@@ -25,7 +25,7 @@ engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-from app import models
+from app import models  # noqa: E402, F401 — регистрация ORM-моделей в metadata
 
 
 def get_db():

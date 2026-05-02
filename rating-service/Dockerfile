@@ -13,6 +13,9 @@ COPY requirements.txt .
 # --no-cache-dir не сохраняет кэш pip, чтобы образ был меньше
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY main.py .
+COPY app ./app
+
 # Команда для запуска приложения
 # --host 0.0.0.0 - слушаем все сетевые интерфейсы внутри контейнера
 # --port 8000 - стандартный порт для разработки

@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from typing import List
 from statistics import mean
 import httpx
@@ -10,7 +9,7 @@ import os
 
 from app import schemas, models
 from app.auth import get_current_user_id
-from app.database import SessionLocal, engine, get_db
+from app.database import engine, get_db
 
 NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://localhost:8003")
 

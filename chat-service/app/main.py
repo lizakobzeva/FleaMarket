@@ -7,7 +7,7 @@ import time
 import os
 from app import schemas, models
 from app.auth import get_current_user_id
-from app.database import SessionLocal, engine, get_db
+from app.database import get_db
 
 app = FastAPI(
     title="Chat Service API",

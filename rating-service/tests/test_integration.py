@@ -79,3 +79,63 @@ def test_delete_review(client):
 
     missing = client.get(f"/reviews/{review_id}")
     assert missing.status_code == 404
+
+
+def test_root(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    body = response.json()
+    assert body.get("status") == "running with PostgreSQL"
+
+
+def test_get_user_reviews(client):
+    with (
+        patch("app.main.send_notification", new=AsyncMock(return_value=None)),
+        patch("app.main.write_log", return_value=None),
+        patch("app.main.httpx.AsyncClient") as mock_client,
+    ):
+        ctx = AsyncMock()
+        ctx.get.return_value = _MockResponse(200, {"status": "complet", "buyer_id": 10, "seller_id": 20})
+        mock_client.return_value.__aenter__.return_value = ctx
+        client.post("/reviews", json={"order_id": 10, "user_id": 20, "rating": 5, "comment": "ok"})
+
+    response = client.get("/reviews", params={"user_id": 20})
+    assert response.status_code == 200
+    reviews = response.json()
+    assert len(reviews) >= 1
+    assert any(r["user_id"] == 20 for r in reviews)
+
+
+def test_get_user_rating(client):
+    with (
+        patch("app.main.send_notification", new=AsyncMock(return_value=None)),
+        patch("app.main.write_log", return_value=None),
+        patch("app.main.httpx.AsyncClient") as mock_client,
+    ):
+        ctx = AsyncMock()
+        ctx.get.return_value = _MockResponse(200, {"status": "complet", "buyer_id": 10, "seller_id": 20})
+        mock_client.return_value.__aenter__.return_value = ctx
+        client.post("/reviews", json={"order_id": 11, "user_id": 20, "rating": 4, "comment": "good"})
+        client.post("/reviews", json={"order_id": 12, "user_id": 20, "rating": 2, "comment": "meh"})
+
+    response = client.get("/ratings/users/20")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user_id"] == 20
+    assert data["total_reviews"] == 2
+    assert data["average_rating"] == 3.0
+
+
+def test_get_user_rating_not_found(client):
+    response = client.get("/ratings/users/999999")
+    assert response.status_code == 404
+
+
+def test_get_review_not_found(client):
+    response = client.get("/reviews/999999")
+    assert response.status_code == 404
+
+
+def test_delete_review_not_found(client):
+    response = client.delete("/reviews/999999")
+    assert response.status_code == 404
