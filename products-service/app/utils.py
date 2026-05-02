@@ -1,5 +1,5 @@
 import os
-from typing import Annotated
+from typing import Annotated, Optional
 
 import httpx
 from dotenv import load_dotenv
@@ -13,7 +13,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def get_current_user_id(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)]
+    credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(bearer_scheme)]
 ) -> int:
     """
     Единая auth-зависимость для сервиса: принимает Bearer JWT и получает user_id

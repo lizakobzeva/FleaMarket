@@ -14,18 +14,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_NAME = os.getenv("DB_NAME")
-DB_HOST = os.getenv("DB_HOST", "auth-db")
-DB_PORT = os.getenv("DB_PORT", "5432")
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL:
+    engine_url = DATABASE_URL
+else:
+    DB_USER = os.getenv("DB_USER")
+    DB_PASSWORD = os.getenv("DB_PASSWORD")
+    DB_NAME = os.getenv("DB_NAME")
+    DB_HOST = os.getenv("DB_HOST", "auth-db")
+    DB_PORT = os.getenv("DB_PORT", "5432")
+    encoded_password = quote_plus(DB_PASSWORD)
+    engine_url = f"postgresql+asyncpg://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-encoded_password = quote_plus(DB_PASSWORD)
-
-engine = create_async_engine(
-    f"postgresql+asyncpg://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}",
-    echo=True
-)
+engine = create_async_engine(engine_url, echo=False)
 
 AsyncSessionLocal = sessionmaker(
     autocommit=False, autoflush=False, bind=engine, class_=AsyncSession

@@ -133,12 +133,24 @@ def startup_event():
     db = next(get_db())
     if db.query(OrderModel).count() == 0:
         order1 = OrderModel(
-            product_id="00000000-0000-0000-0000-000000000001", product_title="Смартфон", buyer_id=55, buyer_name="Евгений Попов",
-            seller_id=12, seller_name="Петр Сидоров", price=30000.00, status="active"
+            product_id=UUID("00000000-0000-0000-0000-000000000001"),
+            product_title="Смартфон",
+            buyer_id=55,
+            buyer_name="Евгений Попов",
+            seller_id=12,
+            seller_name="Петр Сидоров",
+            price=30000.00,
+            status="active",
         )
         order2 = OrderModel(
-            product_id="00000000-0000-0000-0000-000000000002", product_title="Ноутбук", buyer_id=56, buyer_name="Иван Иванов",
-            seller_id=13, seller_name="Анна Петрова", price=75000.00, status="complet"
+            product_id=UUID("00000000-0000-0000-0000-000000000002"),
+            product_title="Ноутбук",
+            buyer_id=56,
+            buyer_name="Иван Иванов",
+            seller_id=13,
+            seller_name="Анна Петрова",
+            price=75000.00,
+            status="complet",
         )
         db.add_all([order1, order2])
         db.commit()

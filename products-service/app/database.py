@@ -8,8 +8,12 @@ from sqlalchemy.orm import DeclarativeBase
 load_dotenv()
 
 # Формируем строку подключения
-POSTGRES_URL = (f'postgresql+asyncpg://{os.getenv("POSTGRES_USER")}:{os.getenv("POSTGRES_PASSWORD")}'
-                f'@{os.getenv("POSTGRES_HOST")}:{os.getenv("POSTGRES_PORT")}/{os.getenv("POSTGRES_DB")}')
+POSTGRES_URL = os.getenv("DATABASE_URL")
+if not POSTGRES_URL:
+    POSTGRES_URL = (
+        f'postgresql+asyncpg://{os.getenv("POSTGRES_USER")}:{os.getenv("POSTGRES_PASSWORD")}'
+        f'@{os.getenv("POSTGRES_HOST")}:{os.getenv("POSTGRES_PORT")}/{os.getenv("POSTGRES_DB")}'
+    )
 
 # Создаём engine (двигатель) - фабрика соединений
 engine = create_async_engine(POSTGRES_URL)
