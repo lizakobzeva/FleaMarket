@@ -1,0 +1,12 @@
+__pycache__
+*.pyc
+*.pyo
+*.db
+.git
+.env
+tests
+auth_test.db
+t.db
+core-service
+notification-service
+alembic

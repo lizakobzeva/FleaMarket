@@ -1,0 +1,66 @@
+# Deploy Check: поднять весь стек FleaMarket и проверить все микросервисы
+# Запуск: Gitea → Actions → Deploy Check → Run workflow
+
+name: Deploy Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Compute registry prefix
+        id: registry
+        run: |
+          OWNER=$(echo "${{ gitea.repository }}" | cut -d/ -f1 | tr '[:upper:]' '[:lower:]')
+          REPO=$(echo "${{ gitea.repository }}" | cut -d/ -f2 | tr '[:upper:]' '[:lower:]')
+          echo "prefix=git.klsh.ru/${OWNER}/${REPO}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to container registry
+        run: |
+          echo "${{ secrets.RUNNER_TOKEN }}" | docker login git.klsh.ru \
+            -u "${{ gitea.actor }}" --password-stdin
+
+      - name: Pull and start full stack
+        env:
+          REGISTRY_PREFIX: ${{ steps.registry.outputs.prefix }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          export POSTGRES_USER="${POSTGRES_USER:-fleauser}"
+          export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-fleapass}"
+          export SECRET_KEY="${SECRET_KEY:-deploy-check-secret-key}"
+          docker compose -f docker-compose.prod.yml pull
+          docker compose -f docker-compose.prod.yml up -d
+
+      - name: Wait for all services
+        run: |
+          check() {
+            curl -sf "$1" > /dev/null
+          }
+          for i in $(seq 1 60); do
+            if check http://127.0.0.1:8000/ && \
+               check http://127.0.0.1:8002/ && \
+               check http://127.0.0.1:8003/ && \
+               check http://127.0.0.1:8004/ && \
+               check http://127.0.0.1:8005/; then
+              echo "FastAPI responded"
+              echo "auth-service:      http://127.0.0.1:8000/"
+              echo "products-service:  http://127.0.0.1:8002/"
+              echo "chat-service:      http://127.0.0.1:8003/"
+              echo "orders-service:    http://127.0.0.1:8004/"
+              echo "rating-service:    http://127.0.0.1:8005/"
+              exit 0
+            fi
+            echo "Waiting for stack... ($i/60)"
+            sleep 5
+          done
+          echo "Stack did not become healthy in time"
+          docker compose -f docker-compose.prod.yml ps
+          docker compose -f docker-compose.prod.yml logs --tail 50
+          exit 1

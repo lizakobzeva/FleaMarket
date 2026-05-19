@@ -85,7 +85,30 @@ def test_root(client):
     response = client.get("/")
     assert response.status_code == 200
     body = response.json()
-    assert body.get("status") == "running with PostgreSQL"
+    assert body.get("status") == "running"
+
+
+def test_metrics_endpoint(client):
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert "http_requests_total" in response.text
+
+
+def test_correlation_id_in_response_header(client):
+    response = client.get("/", headers={"X-Request-ID": "test-correlation-123"})
+    assert response.status_code == 200
+    assert response.headers.get("X-Request-ID") == "test-correlation-123"
+
+
+def test_correlation_id_generated_when_missing(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.headers.get("X-Request-ID")
+
+
+def test_error_endpoint_returns_500(client):
+    response = client.get("/test/error")
+    assert response.status_code == 500
 
 
 def test_get_user_reviews(client):

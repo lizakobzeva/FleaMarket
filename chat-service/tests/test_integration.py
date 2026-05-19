@@ -10,6 +10,35 @@ class _MockResponse:
         return self._payload
 
 
+def test_root(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.json()["status"] == "running"
+
+
+def test_metrics_endpoint(client):
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert "http_requests_total" in response.text
+
+
+def test_correlation_id_in_response_header(client):
+    response = client.get("/", headers={"X-Request-ID": "test-correlation-123"})
+    assert response.status_code == 200
+    assert response.headers.get("X-Request-ID") == "test-correlation-123"
+
+
+def test_correlation_id_generated_when_missing(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.headers.get("X-Request-ID")
+
+
+def test_error_endpoint_returns_500(client):
+    response = client.get("/test/error")
+    assert response.status_code == 500
+
+
 def test_create_chat(client):
     with patch("app.main.httpx.get", return_value=_MockResponse(200, {"seller_id": 700})):
         response = client.post(

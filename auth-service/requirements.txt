@@ -11,3 +11,4 @@ python-multipart
 pydantic-settings
 PyJWT
 httpx
+prometheus-client==0.21.1

@@ -2,14 +2,16 @@
 import asyncio
 import os
 import hashlib
+import time
 from datetime import datetime, timedelta
 from typing import List, Optional
 
 import jwt
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, Response, status, BackgroundTasks
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -18,9 +20,16 @@ from app.schemas import (
     UserCreate, UserResponse, UserLogin, TokenResponse,
     LogResponse
 )
+from app.observability import (
+    CorrelationIDMiddleware,
+    MetricsMiddleware,
+    logger,
+    setup_logging,
+)
 
 # 1. ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
 load_dotenv()
+setup_logging()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
@@ -32,6 +41,9 @@ app = FastAPI(
     description="Сервис регистрации и аутентификации пользователей онлайн-барахолки",
     version="1.0.0"
 )
+
+app.add_middleware(MetricsMiddleware)
+app.add_middleware(CorrelationIDMiddleware)
 
 bearer_scheme = HTTPBearer()
 
@@ -157,7 +169,7 @@ async def write_log_to_db(message: str, endpoint: str = None, user_id: int = Non
         log = Log(message=message, endpoint=endpoint, user_id=user_id)
         db.add(log)
         await db.commit()
-        print(f"Log written: {message}")
+        logger.info("Log written to database", extra={"endpoint": endpoint, "user_id": user_id})
 
 
 # 6. ИНИЦИАЛИЗАЦИЯ БД ПРИ ЗАПУСКЕ
@@ -170,11 +182,35 @@ async def startup_event() -> None:
 # 7. ЭНДПОИНТЫ
 @app.get("/")
 async def root():
+    logger.info("Health check")
     return {
+        "service": "auth service",
         "message": "Auth Service Microservice",
         "docs": "/docs",
-        "status": "running with PostgreSQL"
+        "status": "running",
     }
+
+
+@app.get("/metrics")
+async def get_metrics():
+    """Эндпоинт для Prometheus."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/test/error")
+async def test_error():
+    """Тестовый эндпоинт: всегда 500 (проверка error rate)."""
+    logger.error("Test error endpoint invoked")
+    raise HTTPException(status_code=500, detail="Тестовая ошибка")
+
+
+@app.get("/test/slow")
+async def test_slow():
+    """Тестовый эндпоинт: задержка 2 с (проверка latency)."""
+    logger.info("Slow test endpoint started")
+    time.sleep(2)
+    logger.info("Slow test endpoint finished")
+    return {"status": "ok", "message": "Медленный ответ после 2 секунд"}
 
 
 @app.post("/authorization", response_model=TokenResponse)
@@ -183,13 +219,16 @@ async def authorization(user_login: UserLogin, db: AsyncSession = Depends(get_db
     Упрощенный endpoint авторизации для UI/Swagger:
     принимает JSON `{email, password}` и возвращает bearer token.
     """
+    logger.info("Authorization attempt", extra={"email": user_login.email})
     user = await authenticate_user(db, user_login.email, user_login.password)
     if not user:
+        logger.warning("Authorization failed", extra={"email": user_login.email})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    logger.info("Authorization successful", extra={"user_id": user.id})
     return build_token_response_for_user(user)
 
 
@@ -199,21 +238,26 @@ async def registration(user: UserCreate, db: AsyncSession = Depends(get_db)):
     Упрощенный endpoint регистрации:
     создает пользователя и сразу возвращает bearer token.
     """
+    logger.info("Registration attempt", extra={"email": user.email, "username": user.username})
     existing_user = await get_user_by_email(db, user.email)
     if existing_user:
+        logger.warning("Registration failed: email exists", extra={"email": user.email})
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this email already exists")
 
     existing_username = await get_user_by_username(db, user.username)
     if existing_username:
+        logger.warning("Registration failed: username exists", extra={"username": user.username})
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this username already exists")
 
     db_user = await create_user(db, user)
+    logger.info("User registered", extra={"user_id": db_user.id})
     return build_token_response_for_user(db_user)
 
 
 @app.get("/auth/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """Получить информацию о текущем авторизованном пользователе"""
+    logger.info("Current user profile requested", extra={"user_id": current_user.id})
     return current_user
 
 

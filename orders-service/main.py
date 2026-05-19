@@ -1,16 +1,26 @@
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, status, Depends, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, status, Depends, BackgroundTasks, Request, Response
 from pydantic import BaseModel
 from typing import Optional, List
 from sqlalchemy.orm import Session
 import httpx
 import asyncio
+import time
 from datetime import datetime
 import os
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from database import engine, get_db, Base
 from models import OrderModel
 from auth import get_current_user_id
+from observability import (
+    CorrelationIDMiddleware,
+    MetricsMiddleware,
+    logger,
+    setup_logging,
+)
+
+setup_logging()
 
 Base.metadata.create_all(bind=engine)
 
@@ -19,6 +29,9 @@ app = FastAPI(
     description="Микросервис для управления заказами на онлайн барахолке.",
     version="1.0.0"
 )
+
+app.add_middleware(MetricsMiddleware)
+app.add_middleware(CorrelationIDMiddleware)
 
 
 class OrderResponse(BaseModel):
@@ -66,11 +79,35 @@ async def fetch_user_info(user_id: int):
 
 @app.get("/")
 def root():
+    logger.info("Health check")
     return {
+        "service": "orders service",
         "message": "Orders Service API",
         "status": "running",
-        "docs": "/docs"
+        "docs": "/docs",
     }
+
+
+@app.get("/metrics")
+async def get_metrics():
+    """Эндпоинт для Prometheus."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/test/error")
+async def test_error():
+    """Тестовый эндпоинт: всегда 500 (проверка error rate)."""
+    logger.error("Test error endpoint invoked")
+    raise HTTPException(status_code=500, detail="Тестовая ошибка")
+
+
+@app.get("/test/slow")
+async def test_slow():
+    """Тестовый эндпоинт: задержка 2 с (проверка latency)."""
+    logger.info("Slow test endpoint started")
+    time.sleep(2)
+    logger.info("Slow test endpoint finished")
+    return {"status": "ok", "message": "Медленный ответ после 2 секунд"}
 
 
 @app.get("/health")
@@ -199,6 +236,7 @@ async def create_order(
     db: Session = Depends(get_db),
     buyer_id: int = Depends(get_current_user_id),
 ):
+    logger.info("Creating order", extra={"product_id": str(order.product_id), "buyer_id": buyer_id})
     buyer_name = f"Покупатель #{buyer_id}"
     seller_name = f"Продавец #{order.seller_id}"
 
@@ -269,5 +307,6 @@ async def create_order(
         pass
 
     background_tasks.add_task(write_log, f"Создан заказ #{db_order.id} на сумму {db_order.price}")
+    logger.info("Order created", extra={"order_id": db_order.id})
 
     return db_order

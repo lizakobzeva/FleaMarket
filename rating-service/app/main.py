@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks, Response
 from sqlalchemy.orm import Session
 from typing import List
 from statistics import mean
@@ -6,12 +6,21 @@ import httpx
 import asyncio
 import time
 import os
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app import schemas, models
 from app.auth import get_current_user_id
 from app.database import engine, get_db
+from app.observability import (
+    CorrelationIDMiddleware,
+    MetricsMiddleware,
+    logger,
+    setup_logging,
+)
 
 NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://localhost:8003")
+
+setup_logging()
 
 # Создаём таблицы (только для разработки, в продакшене используем миграции!)
 models.Base.metadata.create_all(bind=engine)
@@ -21,6 +30,9 @@ app = FastAPI(
     description="Сервис для управления комментариями, оценками и рейтингами продавцов и покупателей",
     version="1.0.0"
 )
+
+app.add_middleware(MetricsMiddleware)
+app.add_middleware(CorrelationIDMiddleware)
 
 
 def write_log(message: str):
@@ -157,6 +169,7 @@ async def create_review(
     """
     Добавляет новый отзыв о пользователе после завершения сделки.
     """
+    logger.info("Creating review", extra={"order_id": review.order_id, "author_id": author_id})
     # Проверяем, что автор и получатель отзыва - разные пользователи
     if author_id == review.user_id:
         raise HTTPException(
@@ -209,6 +222,7 @@ async def create_review(
         write_log,
         f"Review created: id={db_review.id}, author={db_review.author_id}, user={db_review.user_id}, rating={db_review.rating}"
     )
+    logger.info("Review created", extra={"review_id": db_review.id})
 
     return db_review
 
@@ -319,12 +333,36 @@ def get_user_rating(user_id: int, db: Session = Depends(get_db)):
     )
 
 
+@app.get("/metrics")
+async def get_metrics():
+    """Эндпоинт для Prometheus."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/test/error")
+async def test_error():
+    """Тестовый эндпоинт: всегда 500 (проверка error rate)."""
+    logger.error("Test error endpoint invoked")
+    raise HTTPException(status_code=500, detail="Тестовая ошибка")
+
+
+@app.get("/test/slow")
+async def test_slow():
+    """Тестовый эндпоинт: задержка 2 с (проверка latency)."""
+    logger.info("Slow test endpoint started")
+    time.sleep(2)
+    logger.info("Slow test endpoint finished")
+    return {"status": "ok", "message": "Медленный ответ после 2 секунд"}
+
+
 # ----- Корневой эндпоинт -----
 @app.get("/")
 def root():
+    logger.info("Health check")
     return {
+        "service": "rating service",
         "message": "Rating Service API",
-        "status": "running with PostgreSQL",
+        "status": "running",
         "docs": "/docs",
         "notification_service_url": NOTIFICATION_SERVICE_URL,
         "endpoints": [
@@ -332,6 +370,6 @@ def root():
             "POST /reviews - создать отзыв",
             "GET /reviews/{reviewId} - получить отзыв по ID",
             "DELETE /reviews/{reviewId} - удалить отзыв",
-            "GET /ratings/users/{userId} - получить рейтинг пользователя"
-        ]
+            "GET /ratings/users/{userId} - получить рейтинг пользователя",
+        ],
     }

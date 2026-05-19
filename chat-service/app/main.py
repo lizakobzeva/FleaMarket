@@ -1,19 +1,31 @@
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Request, Response
 from sqlalchemy.orm import Session
 from typing import List
 import httpx
 import asyncio
 import time
 import os
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from app import schemas, models
 from app.auth import get_current_user_id
 from app.database import get_db
+from app.observability import (
+    CorrelationIDMiddleware,
+    MetricsMiddleware,
+    logger,
+    setup_logging,
+)
+
+setup_logging()
 
 app = FastAPI(
     title="Chat Service API",
     description="Сервис чатов для онлайн-барахолки",
     version="1.0.0"
 )
+
+app.add_middleware(MetricsMiddleware)
+app.add_middleware(CorrelationIDMiddleware)
 
 
 def write_log(message: str):
@@ -29,11 +41,35 @@ def write_log(message: str):
 
 @app.get("/")
 def root():
+    logger.info("Health check")
     return {
+        "service": "chat service",
         "message": "Chat Service API",
         "docs": "/docs",
-        "status": "running with PostgreSQL"
+        "status": "running",
     }
+
+
+@app.get("/metrics")
+async def get_metrics():
+    """Эндпоинт для Prometheus."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/test/error")
+async def test_error():
+    """Тестовый эндпоинт: всегда 500 (проверка error rate)."""
+    logger.error("Test error endpoint invoked")
+    raise HTTPException(status_code=500, detail="Тестовая ошибка")
+
+
+@app.get("/test/slow")
+async def test_slow():
+    """Тестовый эндпоинт: задержка 2 с (проверка latency)."""
+    logger.info("Slow test endpoint started")
+    time.sleep(2)
+    logger.info("Slow test endpoint finished")
+    return {"status": "ok", "message": "Медленный ответ после 2 секунд"}
 
 # GET /chats - список всех чатов
 @app.get("/chats", response_model=List[schemas.ChatResponse])
@@ -74,6 +110,7 @@ def create_chat(
     user_id: int = Depends(get_current_user_id),
 ):
     """Создать новый чат"""
+    logger.info("Creating chat", extra={"product_id": str(chat.product_id)})
     products_url = os.getenv("PRODUCTS_SERVICE_URL", "http://products-service:8000").rstrip("/")
     auth_header = request.headers.get("Authorization")
     if not auth_header:
@@ -125,7 +162,8 @@ def create_chat(
     db.add(db_chat)
     db.commit()
     db.refresh(db_chat)
-    
+    logger.info("Chat created", extra={"chat_id": db_chat.id})
+
     # Добавила фоновую задачу логирования
     if background_tasks:
         background_tasks.add_task(

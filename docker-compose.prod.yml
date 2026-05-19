@@ -1,0 +1,202 @@
+# Продакшен: весь стек FleaMarket (5 микросервисов + PostgreSQL).
+# Образы: ${REGISTRY_PREFIX}-<service>:latest (собираются в CI/CD Pipeline).
+
+services:
+  auth-service:
+    image: ${REGISTRY_PREFIX:-git.klsh.ru/team30/fleamarket}-auth-service:${IMAGE_TAG:-latest}
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: auth-db
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-fleauser}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-fleapass}
+      DB_NAME: auth_db
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+
+  products-service:
+    image: ${REGISTRY_PREFIX:-git.klsh.ru/team30/fleamarket}-products-service:${IMAGE_TAG:-latest}
+    ports:
+      - "8002:8000"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8000
+      POSTGRES_HOST: products-db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-fleauser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleapass}
+      POSTGRES_DB: products_db
+    depends_on:
+      products-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    networks:
+      - backend
+    restart: unless-stopped
+
+  chat-service:
+    image: ${REGISTRY_PREFIX:-git.klsh.ru/team30/fleamarket}-chat-service:${IMAGE_TAG:-latest}
+    ports:
+      - "8003:8000"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8000
+      PRODUCTS_SERVICE_URL: http://products-service:8000
+      DB_HOST: chat-db
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-fleauser}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-fleapass}
+      DB_NAME: chat_db
+    depends_on:
+      chat-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      products-service:
+        condition: service_started
+    networks:
+      - backend
+    restart: unless-stopped
+
+  orders-service:
+    image: ${REGISTRY_PREFIX:-git.klsh.ru/team30/fleamarket}-orders-service:${IMAGE_TAG:-latest}
+    ports:
+      - "8004:8000"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8000
+      PRODUCTS_SERVICE_URL: http://products-service:8000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fleauser}:${POSTGRES_PASSWORD:-fleapass}@orders-db:5432/orders_db
+    depends_on:
+      orders-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      products-service:
+        condition: service_started
+    networks:
+      - backend
+    restart: unless-stopped
+
+  rating-service:
+    image: ${REGISTRY_PREFIX:-git.klsh.ru/team30/fleamarket}-rating-service:${IMAGE_TAG:-latest}
+    ports:
+      - "8005:8000"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8000
+      ORDERS_SERVICE_URL: http://orders-service:8000
+      DB_HOST: rating-db
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-fleauser}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-fleapass}
+      DB_NAME: rating_db
+    depends_on:
+      rating-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      orders-service:
+        condition: service_started
+    networks:
+      - backend
+    restart: unless-stopped
+
+  auth-db:
+    image: postgres:16.2
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fleauser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleapass}
+      POSTGRES_DB: auth_db
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-fleauser}", "-d", "auth_db"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    restart: unless-stopped
+
+  products-db:
+    image: postgres:16.2
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fleauser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleapass}
+      POSTGRES_DB: products_db
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-fleauser}", "-d", "products_db"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - products-db-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    restart: unless-stopped
+
+  chat-db:
+    image: postgres:16.2
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fleauser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleapass}
+      POSTGRES_DB: chat_db
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-fleauser}", "-d", "chat_db"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - chat-db-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    restart: unless-stopped
+
+  orders-db:
+    image: postgres:16.2
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fleauser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleapass}
+      POSTGRES_DB: orders_db
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-fleauser}", "-d", "orders_db"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - orders-db-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    restart: unless-stopped
+
+  rating-db:
+    image: postgres:16.2
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fleauser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleapass}
+      POSTGRES_DB: rating_db
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-fleauser}", "-d", "rating_db"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - rating-db-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    restart: unless-stopped
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  auth-db-data:
+  products-db-data:
+  chat-db-data:
+  orders-db-data:
+  rating-db-data:

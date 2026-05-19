@@ -2,6 +2,7 @@ from uuid import UUID
 
 from app.database import get_db
 from app.models import Product
+from app.observability import logger
 from app.schemas import ProductCreate, ProductResponse
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, insert, select, update
@@ -49,13 +50,16 @@ async def create_product(
         user_id: int = Depends(get_current_user_id)
 ) -> ProductResponse:
     """Создать новое объявление"""
+    logger.info('Creating product')
     values = product.model_dump()
     values["seller_id"] = user_id
     query = insert(Product).values(**values).returning(Product.__table__.columns)
     result = await session.execute(query)
     await session.commit()
     mapping_result = result.mappings().one_or_none()
-    return ProductResponse(**mapping_result)
+    product_response = ProductResponse(**mapping_result)
+    logger.info('Product created', extra={'product_id': str(product_response.id)})
+    return product_response
 
 
 # ----- PUT /products/{product_id} - обновить объявление -----

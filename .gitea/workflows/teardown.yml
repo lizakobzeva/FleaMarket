@@ -1,0 +1,19 @@
+# Teardown: остановить и удалить весь стек FleaMarket
+# Запуск: Gitea → Actions → Teardown → Run workflow
+
+name: Teardown
+
+on:
+  workflow_dispatch:
+
+jobs:
+  teardown:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Stop and remove full stack
+        run: |
+          docker compose -f docker-compose.prod.yml down --remove-orphans
+          echo "Teardown complete: all FleaMarket containers stopped"

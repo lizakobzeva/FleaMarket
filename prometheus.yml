@@ -1,0 +1,39 @@
+# Prometheus: сбор метрик FleaMarket (корневой docker-compose.yml)
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'auth-service'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['host.docker.internal:8001']
+        labels:
+          service: auth-service
+
+  - job_name: 'products-service'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['host.docker.internal:8002']
+        labels:
+          service: products-service
+
+  - job_name: 'chat-service'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['host.docker.internal:8003']
+        labels:
+          service: chat-service
+
+  - job_name: 'orders-service'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['host.docker.internal:8004']
+        labels:
+          service: orders-service
+
+  - job_name: 'rating-service'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['host.docker.internal:8005']
+        labels:
+          service: rating-service
