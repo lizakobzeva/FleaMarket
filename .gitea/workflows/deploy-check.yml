@@ -5,6 +5,11 @@ name: Deploy Check
 
 on:
   workflow_dispatch:
+    inputs:
+      run_deploy:
+        description: 'Запустить деплой (yes)'
+        required: false
+        default: 'yes'
 
 jobs:
   deploy-check:

@@ -5,6 +5,11 @@ name: Teardown
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Остановить стек (yes)'
+        required: false
+        default: 'yes'
 
 jobs:
   teardown:
